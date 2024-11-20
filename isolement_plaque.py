@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import os  # Importer le module os pour la suppression de fichiers
 
 # Charger l'image
-image = cv2.imread('image_4.jpg')
+image = cv2.imread('bmw_plaque.jpg')
 
 # Convertir en niveaux de gris
 gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
