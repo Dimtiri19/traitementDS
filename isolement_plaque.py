@@ -1,87 +1,69 @@
 import cv2
 import numpy as np
-import matplotlib.pyplot as plt
-import os  # Importer le module os pour la suppression de fichiers
+import os
 
 # Charger l'image
-image = cv2.imread('bmw_plaque.jpg')
+image_path = "bmw_plaque.jpg"  # Nom de l'image téléchargée
+if not os.path.exists(image_path):
+    print(f"L'image {image_path} n'existe pas.")
+    exit()
 
-# Convertir en niveaux de gris
+image = cv2.imread(image_path)
 gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-# Appliquer un flou gaussien pour réduire le bruit
-gray = cv2.GaussianBlur(gray, (5, 5), 0)
+# Appliquer un flou pour réduire le bruit
+blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
-# Appliquer une détection de bords pour mieux voir les contours
-edged = cv2.Canny(gray, 30, 200)
+# Détecter les contours avec Canny
+edges = cv2.Canny(blurred, 50, 150)
 
-# Trouver les contours dans l'image
-contours, _ = cv2.findContours(edged.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+# Trouver les contours
+contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-# Trier les contours par zone pour garder les plus grandes
-contours = sorted(contours, key=cv2.contourArea, reverse=True)[:10]
-plaque_contour = None
+# Créer une copie de l'image originale pour dessiner tous les contours
+all_contours_image = image.copy()
+cv2.drawContours(all_contours_image, contours, -1, (255, 0, 0), 2)  # Contours en bleu
 
-# Boucle pour trouver le contour qui ressemble à un rectangle (la plaque)
+# Parcourir les contours pour trouver des zones potentielles de plaques
+potential_plates = []
+plate_images = []
 for contour in contours:
-    # Approximons le contour
-    epsilon = 0.02 * cv2.arcLength(contour, True)
-    approx = cv2.approxPolyDP(contour, epsilon, True)
-    
-    # Si le contour a 4 points, il pourrait correspondre à la plaque
-    if len(approx) == 4:
-        plaque_contour = approx
-        break
+    x, y, w, h = cv2.boundingRect(contour)
+    aspect_ratio = w / h
+    if 2 < aspect_ratio < 5 and w > 100 and h > 30:  # Critères de dimension
+        potential_plates.append((x, y, w, h))
+        plate_images.append(image[y:y+h, x:x+w])
 
-# Vérifier si la plaque a été détectée
-if plaque_contour is not None:
-    # Créer un masque de la même taille que l'image originale, initialisé à noir
-    mask = np.zeros_like(image)
+# Identifier la zone contenant le plus de rouge
+def calculate_red_intensity(region):
+    """Calcule l'intensité du rouge dans une région donnée."""
+    red_channel = region[:, :, 2]  # Canal rouge
+    return np.sum(red_channel)  # Somme des valeurs de rouge
 
-    # Dessiner le contour de la plaque sur le masque
-    cv2.drawContours(mask, [plaque_contour], -1, (255, 255, 255), -1)
+if potential_plates:
+    max_red_index = -1
+    max_red_value = 0
+    for i, plate in enumerate(plate_images):
+        red_intensity = calculate_red_intensity(plate)
+        if red_intensity > max_red_value:
+            max_red_value = red_intensity
+            max_red_index = i
 
-    # Appliquer le masque sur l'image originale pour isoler la plaque
-    result = cv2.bitwise_and(image, mask)
+    # Afficher la région contenant le plus de rouge
+    if max_red_index != -1:
+        selected_plate = potential_plates[max_red_index]
+        x, y, w, h = selected_plate
+        best_plate_image = image[y:y+h, x:x+w]
 
-    # Extraire les coordonnées du rectangle englobant
-    x, y, w, h = cv2.boundingRect(plaque_contour)
+        # Appliquer un filtre en niveaux de gris
+        gray_plate_image = cv2.cvtColor(best_plate_image, cv2.COLOR_BGR2GRAY)
 
-    # Enregistrer l'image résultante (plaque isolée)
-    cv2.imwrite('plaque_isolee.png', result)
+        # Appliquer un filtre de netteté (unsharp mask)
+        blurred_gray = cv2.GaussianBlur(gray_plate_image, (5, 5), 0)
+        sharpened_gray = cv2.addWeighted(gray_plate_image, 2, blurred_gray, -1, 0)
 
-    # Créer une image avec fond noir
-    black_background = np.zeros_like(image)
-
-    # Garder la plaque sur le fond noir
-    black_background[y:y+h, x:x+w] = result[y:y+h, x:x+w]
-
-    # Afficher l'image avec la plaque sur un fond noir
-    plt.imshow(cv2.cvtColor(black_background, cv2.COLOR_BGR2RGB))
-    plt.title("Plaque isolée avec fond noir")
-    plt.axis('off')
-    plt.show()
-
-    # Charger l'image isolée à partir du fichier
-plaque_isolee = cv2.imread('plaque_isolee.png')
-
-# Redécouper la région de la plaque à partir de l'image isolée
-plaque_region = plaque_isolee[y:y+h, x:x+w]
-
-# Convertir la région de la plaque en niveaux de gris
-plaque_region_gray = cv2.cvtColor(plaque_region, cv2.COLOR_BGR2GRAY)
-
-# Appliquer un seuillage pour rendre en noir total les pixels en dessous de 200
-_, plaque_region_gray = cv2.threshold(plaque_region_gray, 200, 255, cv2.THRESH_BINARY_INV)
-
-# Afficher la région de la plaque découpée à partir de l'image isolée en niveaux de gris
-plt.imshow(plaque_region_gray, cmap='gray')
-plt.title("Région de la plaque à partir de l'image isolée (Niveaux de gris)")
-plt.axis('off')
-plt.show()
-
-# Enregistrer l'image finale en tant que imClean.png
-cv2.imwrite('imClean.png', plaque_region_gray)
-
-# Supprimer le fichier plaque_isolee.png
-os.remove('plaque_isolee.png')
+        # Sauvegarder l'image en niveaux de gris améliorée dans un fichier PNG
+        cv2.imwrite("imClean.png", sharpened_gray)
+        print("L'image sélectionnée et améliorée a été enregistrée sous 'imClean.png'.")
+else:
+    print("Aucune plaque potentielle détectée.")
