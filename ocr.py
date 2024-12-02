@@ -1,27 +1,24 @@
 import easyocr
 
-# Créer un lecteur OCR
+# lecteur OCR
 reader = easyocr.Reader(['fr', 'en'])
 
-# Lire l'image pour extraire le texte
+# Lire image pour extraire le texte
 resultats = reader.readtext('imClean.png')
 
-# Initialiser une variable pour stocker le texte complet
 texte_complet = ""
 
-# Vérifier et ignorer le premier résultat si c'est un "B" seul
-if resultats and resultats[0][1] == "B":
-    resultats = resultats[1:]  # Ignorer le premier élément
+#caractère indésirable
+caracteres_a_supprimer = ["-", ".", " ", "!", "[", "]", "&", "*", "(", ")" , "$", "\'", "|", ","]
 
-# Ajouter chaque texte extrait à la variable texte_complet
 for resultat in resultats:
     boite, texte, confiance = resultat
-    texte = texte.replace("-", "")  # Supprimer les tirets
-    texte = texte.replace(".", "") # Supprimer les points
-    texte = texte.replace(" ", "") # Supprimer les espaces
-    texte_complet += texte  # Ajouter sans espaces intermédiaires
+    for char in caracteres_a_supprimer:
+        texte = texte.replace(char, "")
+    texte_complet += texte
 
-# Ajouter un tiret avant et après chaque groupe de 3 lettres dans texte_complet
+
+# rajout manuel de tiret dû au fait qu'ils sont mal détecté
 texte_complet_modifie = ""
 lettres = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"  # Liste des lettres
 
